@@ -1,0 +1,23 @@
+{
+  "name": "pca-webcam-gaze-tracker",
+  "version": "1.0.0",
+  "description": "Eye tracking with MediaPipe, OpenCV.js, native JavaScript PCA, personalized calibration, and head-pose compensation.",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "eye-tracking",
+    "gaze-tracking",
+    "mediapipe",
+    "opencv-js",
+    "pca",
+    "computer-vision",
+    "javascript"
+  ],
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/core.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

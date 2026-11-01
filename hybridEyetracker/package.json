@@ -1,0 +1,10 @@
+{
+  "name": "hybrid-webcam-gaze-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node serve-local.cjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check dist/app.js"
+  }
+}

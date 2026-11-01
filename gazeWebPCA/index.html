@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Private, browser-native webcam gaze estimation with local calibration.">
+  <title>PCA-Enhanced Webcam Gaze Tracker</title>
+  <link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body>
+  <main>
+    <section class="camera-workspace" aria-label="Camera and tracking controls">
+      <div class="camera-controls">
+        <div class="actions">
+          <button id="startBtn" class="primary">Enable camera <span>→</span></button>
+          <button id="calibrateBtn" class="secondary" disabled>Calibrate 17 points · dense</button>
+        </div>
+        <p id="status" class="status" role="status">Camera is off</p>
+      </div>
+
+      <div class="monitor-shell">
+        <div class="monitor-head"><span>LIVE INPUT</span><span id="fps">— FPS</span></div>
+        <div id="cameraStage" class="camera-stage">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="overlay"></canvas>
+          <div id="cameraPlaceholder" class="camera-placeholder">
+            <div class="eye-icon">◉</div>
+            <strong>Camera preview</strong>
+            <small>Nothing is recorded or uploaded</small>
+          </div>
+          <div class="corner tl"></div><div class="corner tr"></div>
+          <div class="corner bl"></div><div class="corner br"></div>
+        </div>
+        <div class="signal-row">
+          <div><span class="signal-label">FACE</span><strong id="faceSignal">Waiting</strong></div>
+          <div><span class="signal-label">MODEL</span><strong id="modelSignal">Not calibrated</strong></div>
+          <div><span class="signal-label">CONFIDENCE</span><strong id="confidenceSignal">0%</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <article class="panel tracker-panel">
+        <div class="panel-heading">
+          <div><p class="kicker">01 / TRACK</p><h2>Gaze playground</h2></div>
+          <button id="validateBtn" class="text-button" disabled>Run validation</button>
+        </div>
+        <div id="playground" class="playground">
+          <div class="play-grid"></div>
+          <div id="gazeCursor" class="gaze-cursor" hidden><span></span></div>
+          <p id="playHint">Complete calibration to enable gaze tracking</p>
+        </div>
+      </article>
+
+      <aside class="panel metrics-panel">
+        <p class="kicker">02 / QUALITY</p>
+        <h2>Live metrics</h2>
+        <div class="metric"><span title="Face visibility and prediction stability; not gaze accuracy.">Tracking signal quality</span><strong id="metricConfidence">0%</strong><div class="meter"><i id="confidenceBar"></i></div></div>
+        <div class="metric-pair">
+          <div><span>Accuracy</span><strong id="accuracy">—</strong><small>estimated validation error</small></div>
+          <div><span>Precision</span><strong id="precision">—</strong><small>sample spread</small></div>
+        </div>
+        <div class="metric-pair">
+          <div><span title="In-sample regression fit; only validation determines readiness.">Calibration fit</span><strong id="calibrationConfidence">—</strong><small>training fit</small></div>
+          <div><span>Map stability</span><strong id="mapQuality">—</strong><small>app-specific 0–1; higher is better</small></div>
+        </div>
+        <div class="metric-pair">
+          <div><span>Samples</span><strong id="sampleCount">0</strong><small>calibration frames</small></div>
+          <div><span>Storage</span><strong id="storageState">Empty</strong><small>this browser only</small></div>
+        </div>
+        <div class="screen-settings">
+          <label>Screen diagonal <input id="screenInches" type="number" min="8" max="80" step="0.1" value="24"> in</label>
+          <label>Viewing distance <input id="viewDistance" type="number" min="20" max="150" step="1" value="60"> cm</label>
+        </div>
+        <div class="benchmark-box">
+          <label>Benchmark condition
+            <select id="benchmarkCondition">
+              <option value="baseline">Baseline</option><option value="glasses">Glasses</option><option value="low-light">Low light</option>
+              <option value="head-left">Head left</option><option value="head-right">Head right</option><option value="head-up">Head up</option>
+              <option value="head-down">Head down</option><option value="near">Near camera</option><option value="far">Far from camera</option>
+            </select>
+          </label>
+          <div class="benchmark-actions"><button id="benchmarkBtn" disabled>Run benchmark trial</button><button id="exportBtn" disabled>Export JSON</button></div>
+          <button id="clearBenchmarksBtn" class="benchmark-clear" disabled>Delete benchmark history</button>
+          <small id="benchmarkSummary">No benchmark trials recorded</small>
+        </div>
+        <button id="clearBtn" class="danger" disabled>Clear session calibration</button>
+      </aside>
+    </section>
+
+    <section id="pcaPanel" class="pca-panel" hidden>
+      <div><p class="kicker">03 / PCA MODEL</p><h2>What the gaze model learned</h2><p>Each grayscale tile shows the normalized face patch followed by the left and right eye patches, comparable to the feature blocks exposed by the reference captures. Components show variation, not stored camera frames.</p></div>
+      <div><canvas id="pcaMean" width="96" height="24" aria-label="PCA mean face and eye feature blocks"></canvas><small>Mean features · face 20×24 · left eye 36×20 · right eye 36×20</small></div>
+      <div id="pcaComponents" class="pca-components"></div>
+    </section>
+  </main>
+
+  <div id="calibrationLayer" class="calibration-layer" hidden>
+    <div class="calibration-info"><strong id="calibrationTitle">Look at the target</strong><span id="calibrationProgress">1 / 17</span><small>Keep your head comfortable and follow all 17 targets with your eyes.</small></div>
+    <button id="cancelCalibration" aria-label="Cancel calibration">×</button>
+    <div id="calibrationTarget" class="calibration-target"><i></i></div>
+  </div>
+
+  <script>
+    window.__webcamGazeTrackerLoaded = false;
+    window.addEventListener("error", event => {
+      const status = document.getElementById("status");
+      const phase = window.__webcamGazeTrackerLoaded ? "Runtime" : "Startup";
+      if (status) { status.textContent = `${phase} error: ${event.message}`; status.style.color = "#b7441d"; }
+    });
+    window.addEventListener("unhandledrejection", event => {
+      const status = document.getElementById("status");
+      const message = event.reason?.message || String(event.reason || "Unknown module error");
+      const phase = window.__webcamGazeTrackerLoaded ? "Runtime" : "Startup";
+      if (status) { status.textContent = `${phase} error: ${message}`; status.style.color = "#b7441d"; }
+    });
+  </script>
+  <script type="module">
+    import("./app-v2.js?v=48").then(() => { window.__webcamGazeTrackerLoaded = true; }).catch(error => {
+      const status = document.getElementById("status");
+      status.textContent = `Startup error: ${error?.message || error}`;
+      status.style.color = "#b7441d";
+    });
+  </script>
+</body>
+</html>

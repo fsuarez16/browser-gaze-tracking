@@ -1,0 +1,106 @@
+.calibration-cue {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 68%;
+  width: 210px;
+  height: 120px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  pointer-events: none;
+  color: var(--green);
+  filter: drop-shadow(0 0 18px rgba(186, 255, 74, .4));
+}
+
+.calibration-cue[hidden] { display: none; }
+.calibration-cue::before {
+  content: "";
+  position: absolute;
+  inset: -22px;
+  border-radius: 999px;
+  background: conic-gradient(currentColor var(--cue-progress, 0deg), rgba(141, 153, 149, .18) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 0);
+  opacity: .75;
+}
+.calibration-cue[data-status="accepted"] { color: #baff4a; animation: cue-accepted .35s ease-out both; }
+.calibration-cue[data-status="retry"] { color: #ff5e57; animation: cue-retry .18s linear 4; }
+.calibration-cue[data-status="warning"] { color: #ffb14a; animation: cue-warning .8s ease-in-out 2 alternate; }
+
+.cue-head {
+  position: relative;
+  width: 64px;
+  height: 78px;
+  border: 5px solid currentColor;
+  border-radius: 46% 46% 42% 42%;
+  opacity: .9;
+}
+
+.cue-head::before, .cue-head::after {
+  content: "";
+  position: absolute;
+  top: 27px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.cue-head::before { left: 14px; }
+.cue-head::after { right: 14px; }
+.cue-head i {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  width: 22px;
+  height: 8px;
+  border-bottom: 4px solid currentColor;
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.cue-arrow {
+  min-width: 86px;
+  text-align: center;
+  font: 900 86px/1 Arial, sans-serif;
+  animation: cue-pulse .8s ease-in-out infinite alternate;
+}
+
+.calibration-cue[data-direction="right"] .cue-head { animation: cue-right 1.1s ease-in-out infinite; }
+.calibration-cue[data-direction="left"] .cue-head { animation: cue-left 1.1s ease-in-out infinite; }
+.calibration-cue[data-direction="up"] .cue-head { animation: cue-up 1.1s ease-in-out infinite; }
+.calibration-cue[data-direction="down"] .cue-head { animation: cue-down 1.1s ease-in-out infinite; }
+.calibration-cue[data-direction="neutral"] .cue-head { animation: cue-neutral 1s ease-in-out infinite alternate; }
+.calibration-cue[data-direction="light"] .cue-head,
+.calibration-cue[data-direction="dark"] .cue-head { display: none; }
+.calibration-cue[data-direction="light"] .cue-arrow,
+.calibration-cue[data-direction="dark"] .cue-arrow { font-size: 104px; }
+
+.calibration-overlay.light-phase { background: #fff; color: #09100d; }
+.calibration-overlay.light-phase .calibration-copy b,
+.calibration-overlay.light-phase .calibration-copy span,
+.calibration-overlay.light-phase .calibration-cue,
+.calibration-overlay.light-phase .cancel { color: #09210e; }
+.calibration-overlay.light-phase .target::before,
+.calibration-overlay.light-phase .target::after,
+.calibration-overlay.light-phase .target i { background: #09210e; }
+.calibration-overlay.light-phase .target { border-color: rgba(9, 33, 14, .4); }
+.calibration-overlay.dark-phase { background: #000; }
+.calibration-overlay.dark-phase .calibration-cue { color: #eaf7ff; }
+
+@keyframes cue-pulse { to { transform: scale(1.12); opacity: .7; } }
+@keyframes cue-right { 0%, 100% { transform: translateX(-10px) rotate(-3deg); } 50% { transform: translateX(16px) rotate(7deg); } }
+@keyframes cue-left { 0%, 100% { transform: translateX(10px) rotate(3deg); } 50% { transform: translateX(-16px) rotate(-7deg); } }
+@keyframes cue-up { 0%, 100% { transform: translateY(8px); } 50% { transform: translateY(-15px); } }
+@keyframes cue-down { 0%, 100% { transform: translateY(-8px); } 50% { transform: translateY(15px); } }
+@keyframes cue-neutral { to { transform: scale(.92); opacity: .7; } }
+@keyframes cue-accepted { 50% { filter: drop-shadow(0 0 32px currentColor); } }
+@keyframes cue-retry { 25% { margin-left: -10px; } 75% { margin-left: 10px; } }
+@keyframes cue-warning { to { filter: drop-shadow(0 0 28px currentColor); opacity: .72; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .calibration-cue .cue-head, .calibration-cue .cue-arrow { animation: none !important; }
+}

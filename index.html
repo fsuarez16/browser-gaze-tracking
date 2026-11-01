@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Three browser-based webcam eye-tracking demos.">
+  <title>Eye-Tracking Demos</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #202c35; background: #fff; }
+    body { margin: 0; }
+    main { max-width: 520px; margin: 12vh auto; padding: 24px; }
+    h1 { font-size: 2rem; margin: 0 0 12px; }
+    p { color: #60707b; line-height: 1.6; }
+    nav { display: grid; gap: 12px; margin: 28px 0; }
+    nav a { padding: 18px 20px; border: 1px solid #dce2e6; border-radius: 8px; text-decoration: none; color: #17695f; font-weight: 600; }
+    nav a:hover { background: #f2f7f6; border-color: #17695f; }
+    a:focus-visible { outline: 3px solid #17695f; outline-offset: 4px; }
+    footer { color: #60707b; font-size: .8rem; line-height: 1.6; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Eye-Tracking Demos</h1>
+    <p>Choose a tracker to get started. You will need a webcam.</p>
+    <nav aria-label="Eye trackers">
+      <a href="./gazeWebPCA/">PCA Gaze Tracker &rarr;</a>
+      <a href="./hybridEyetracker/dist/">Hybrid Gaze Tracker &rarr;</a>
+      <a href="./webEyetrackCNN/">WebEyeTrack CNN &rarr;</a>
+    </nav>
+    <footer>WebEyeTrack CNN is adapted from <a href="https://github.com/RedForestAI/WebEyeTrack">RedForestAI/WebEyeTrack</a>.</footer>
+  </main>
+</body>
+</html>

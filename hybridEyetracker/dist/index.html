@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090c10">
+  <title>Hybrid Webcam Gaze Tracker</title>
+  <meta name="description" content="Hybrid webcam eye tracking combining face and iris geometry with personal screen calibration, live gaze visualization, heatmaps, and session exports.">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./calibration-cues.css?v=20261023-adaptive-light-quality-1">
+  <link rel="stylesheet" href="./register-control.css">
+  <link rel="stylesheet" href="./extras.css">
+  <style>
+    main { padding-top: 20px; }
+    .tracker-summary { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 12px 18px; color: var(--muted); font: 11px/1.4 monospace; border-bottom: 1px solid var(--line); }
+    .tracker-summary strong { color: var(--ink); }
+    @media (max-width: 520px) { main { padding-top: 14px; } }
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <main>
+    <section class="workspace">
+      <div class="camera-card panel">
+        <div class="panel-head"><span>01 / SENSOR</span><span id="fps">0 FPS</span></div>
+        <div class="tracker-summary" role="status"><span>Camera: <strong id="heroState">OFFLINE</strong></span><span>Calibration: <strong id="heroCalibration">NOT SET</strong></span></div>
+        <div class="stage" id="stage">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="cameraCanvas"></canvas>
+          <div class="engine-overlay-status" id="engineOverlayStatus" hidden>ENGINE WAITING</div>
+          <div class="camera-empty" id="cameraEmpty"><span>◌</span><p>Camera is waiting</p></div>
+          <div class="scanline"></div>
+        </div>
+        <div class="sensor-row">
+          <div><small>FACE</small><b id="faceMetric">—</b></div>
+          <div><small>LEFT EYE</small><b id="leftMetric">—</b></div>
+          <div><small>RIGHT EYE</small><b id="rightMetric">—</b></div>
+          <div><small>LANDMARK STABILITY</small><b id="confidenceMetric">—</b></div>
+        </div>
+      </div>
+
+      <aside class="control panel">
+        <div class="panel-head"><span>02 / CONTROL</span><span class="status-dot" id="statusDot"></span></div>
+        <div class="step active" id="cameraStep"><span>1</span><div><b>Connect camera</b><small>Grant webcam access and load the landmark model.</small></div></div>
+        <button class="primary" id="startCamera">START CAMERA <span>↗</span></button>
+        <button class="secondary" id="reinitFace" disabled>REINITIALIZE FACE</button>
+        <div class="step" id="registerStep"><span>2</span><div><b>Register frontal head pose</b><small>Look straight ahead and hold still. This defines the eye-ray dot reference.</small></div></div>
+        <button class="primary register-head" id="registerHead" disabled>REGISTER HEAD POSE <span>◎</span></button>
+        <div class="step" id="calibrationStep"><span>3</span><div><b>Calibrate</b><small>Follow nine targets without moving your head.</small></div></div>
+        <button class="secondary" id="startCalibration" disabled>BEGIN CALIBRATION</button>
+        <div class="step" id="trackStep"><span>4</span><div><b>Track & record</b><small>Inspect the live cursor or capture a CSV session.</small></div></div>
+        <div class="button-grid">
+          <button class="secondary" id="toggleTracking" disabled>START TRACKING</button>
+          <button class="record" id="toggleRecording" disabled><i></i> RECORD</button>
+        </div>
+        <div class="toggle-stack">
+          <label class="switch-row"><span><b>Gaze bubble</b><small>Show the live gaze position</small></span><input id="bubbleToggle" type="checkbox" checked><i></i></label>
+          <label class="switch-row"><span><b>Heatmap</b><small>Accumulate gaze density on screen</small></span><input id="heatmapToggle" type="checkbox"><i></i></label>
+          <label class="switch-row"><span><b>Gaze path</b><small>Show ordered fixations and saccades</small></span><input id="pathToggle" type="checkbox" checked><i></i></label>
+          <label class="switch-row"><span><b>Adaptive drift</b><small>Click an intended target to correct drift</small></span><input id="driftToggle" type="checkbox"><i></i></label>
+          <label class="switch-row"><span><b>Diagnostic overlay</b><small>Eye weights, 3D ray and recovery state</small></span><input id="debugToggle" type="checkbox"><i></i></label>
+          <label class="switch-row"><span><b>Record webcam video</b><small>Prepare a synchronized WebM during recording</small></span><input id="videoToggle" type="checkbox"><i></i></label>
+          <label class="switch-row"><span><b>Grayscale diagnostic video</b><small>Record the shared luminance pipeline, similar to vSamples</small></span><input id="grayscaleVideoToggle" type="checkbox" checked><i></i></label>
+        </div>
+        <div class="button-grid"><button class="secondary" id="armDrift" disabled>ARM DRIFT TARGET</button><button class="secondary" id="undoDrift" disabled>UNDO DRIFT</button><button class="secondary" id="resetDrift" disabled>RESET DRIFT</button></div>
+        <small id="driftStatus">OFFSET · 0 TRUSTED TARGETS</small>
+        <button class="text-button" id="clearHeatmap">CLEAR HEATMAP</button>
+        <button class="text-button" id="exportHeatmap">EXPORT HEATMAP (.PNG)</button>
+        <button class="text-button" id="exportSession">EXPORT SESSION PACKAGE (.JSON)</button>
+        <button class="text-button" id="downloadVideo" disabled>DOWNLOAD SESSION VIDEO (.WEBM)</button>
+        <label class="text-button file-button">COMPARE SESSION (.JSON)<input id="importSession" type="file" accept="application/json"></label>
+        <button class="text-button" id="exportCsv" disabled>EXPORT LAST SESSION (.CSV)</button>
+        <div class="message" id="message" role="status" aria-live="polite">Ready. Connect your camera to begin.</div>
+      </aside>
+    </section>
+
+    <section class="live-panel panel">
+      <div class="panel-head"><span>03 / LIVE OUTPUT</span><span id="sampleCount">0 SAMPLES</span></div>
+      <div class="output-grid">
+        <div class="coordinate"><small>GAZE X</small><strong id="gazeX">—</strong><em>PX</em></div>
+        <div class="coordinate"><small>GAZE Y</small><strong id="gazeY">—</strong><em>PX</em></div>
+        <div class="quality"><small>LANDMARK STABILITY</small><div class="meter"><i id="qualityBar"></i></div><strong id="qualityText">NO SIGNAL</strong></div>
+        <div class="session"><small>SESSION</small><strong id="sessionTime">00:00.0</strong><em id="recordState">IDLE</em></div>
+      </div>
+    </section>
+
+    <section class="telemetry panel">
+      <div class="panel-head"><span>04 / REAL-TIME TELEMETRY</span><span>LANDMARK ESTIMATES</span></div>
+      <div class="telemetry-grid">
+        <div><small>GAZE X</small><strong id="telemetryGazeX">—</strong><em>PX</em></div>
+        <div><small>GAZE Y</small><strong id="telemetryGazeY">—</strong><em>PX</em></div>
+        <div><small>GAZE X NORMALIZED</small><strong id="gazeNormX">—</strong><em>0–1</em></div>
+        <div><small>GAZE Y NORMALIZED</small><strong id="gazeNormY">—</strong><em>0–1</em></div>
+        <div><small>TRACK STATUS</small><strong id="trackingValidity">—</strong><em>VALIDITY</em></div>
+        <div><small>HEAD X · INFERRED</small><strong id="headX">—</strong><em>REL</em></div>
+        <div><small>HEAD Y · INFERRED</small><strong id="headY">—</strong><em>REL</em></div>
+        <div><small>HEAD Z · INFERRED</small><strong id="headZ">—</strong><em>REL</em></div>
+        <div><small>YAW · INFERRED</small><strong id="yaw">—</strong><em>DEG</em></div>
+        <div><small>PITCH · INFERRED</small><strong id="pitch">—</strong><em>DEG</em></div>
+        <div><small>ROLL · INFERRED</small><strong id="roll">—</strong><em>DEG</em></div>
+        <div><small>SCREEN RAY X · INFERRED</small><strong id="gaze3dX">—</strong><em>RAY</em></div>
+        <div><small>SCREEN RAY Y · INFERRED</small><strong id="gaze3dY">—</strong><em>RAY</em></div>
+        <div><small>SCREEN RAY Z · INFERRED</small><strong id="gaze3dZ">—</strong><em>RAY</em></div>
+        <div><small>RECOVERY STATE</small><strong id="recoveryState">IDLE</strong><em>STATE</em></div>
+        <div><small>ACTIVE ENGINE</small><strong id="activeEngine">MEDIAPIPE</strong><em>MODE</em></div>
+        <div><small>HYBRID EYE QUALITY</small><strong id="hybridConfidence">—</strong><em>%</em></div>
+        <div><small>CALIBRATION HEALTH</small><strong id="calibrationHealth">—</strong><em id="calibrationHealthDetail">WAIT</em></div>
+        <div><small>POSE DISTANCE</small><strong id="poseDistance">—</strong><em>NORM</em></div>
+        <div><small>EYE SOURCE</small><strong id="eyeSourceHealth">—</strong><em>STABILITY</em></div>
+      </div>
+      <p class="telemetry-note"><b>Coordinate output:</b> gaze remains normalized, is provisionally accepted inside −0.2…1.2, and is displayed only inside 0…1. Head position and angles are estimates inferred from browser face landmarks; physical axis conventions and units are approximate.</p>
+    </section>
+
+    <section class="settings-panel panel">
+      <div class="panel-head"><span>05 / ORIGINAL-COMPAT CONTROLS</span><span>LOCAL BROWSER EQUIVALENTS</span></div>
+      <div class="settings-tabs" role="tablist" aria-label="Tracker settings">
+        <button class="active" id="resultSettingsTab" role="tab" aria-selected="true" aria-controls="resultSettingsPane">RESULT SETTINGS</button>
+        <button id="trackerSettingsTab" role="tab" aria-selected="false" aria-controls="trackerSettingsPane">EYE-TRACKER SETTINGS</button>
+      </div>
+      <div class="settings-pane" id="resultSettingsPane" role="tabpanel">
+        <div class="settings-grid">
+          <label><span>Heatmap time window</span><div><input id="heatTimeWindow" type="number" min="100" max="10000" step="100" value="500"><em>MS</em></div><small>Minimum stable dwell used when building the result map.</small></label>
+          <label><span>Gaze plot size</span><div><input id="gazePlotSize" type="number" min="1" max="25" step="1" value="9"><em>SCREEN %</em></div><small>Diameter of gaze marks in generated maps.</small></label>
+          <label class="check-setting"><input id="originalResolution" type="checkbox" checked><span>Original screen resolution</span><small>Export at the viewport dimensions recorded during validation.</small></label>
+          <label class="check-setting"><input id="adaptiveWindow" type="checkbox" checked><span>Adaptive static-scene window</span><small>Extends fixation accumulation while the page remains visually stable.</small></label>
+          <label><span>Static-scene change threshold</span><div><input id="sceneThreshold" type="number" min="1" max="30" step="1" value="5"><em>%</em></div><small>Recorded in result metadata; DOM changes are the browser scene proxy.</small></label>
+          <label class="check-setting"><input id="showMouse" type="checkbox" checked><span>Show mouse cursor</span><small>Add recorded mouse positions to generated result maps.</small></label>
+          <label class="check-setting"><input id="showFace" type="checkbox" checked><span>Show face snapshot</span><small>Include the current camera frame in the local HTML report.</small></label>
+        </div>
+        <div class="settings-actions">
+          <button class="primary" id="generateResult">GENERATE RESULT <span>↓</span></button>
+          <p>Browsers cannot write to an arbitrary folder. The generated self-contained report is downloaded to your normal Downloads location.</p>
+        </div>
+      </div>
+      <div class="settings-pane" id="trackerSettingsPane" role="tabpanel" hidden>
+        <div class="settings-grid">
+          <label><span>Tracking engine</span><select id="trackingEngine"><option value="mediapipe">MediaPipe landmarks</option><option value="hybrid">Hybrid eye-image mode</option></select><small>Hybrid analyzes pupil centers inside landmark-normalized eye crops and falls back per frame when quality is weak.</small></label>
+          <label><span>Camera vertical field of view</span><div><input id="cameraFov" type="number" min="20" max="120" step="1" value="42"><em>DEG</em></div><small>Used by the inferred 3D screen-ray calculation and export metadata.</small></label>
+          <label><span>Webcam location</span><select id="cameraLocation"><option value="above">Above screen</option><option value="below">Below screen</option></select><small>Changes the sign convention of the inferred vertical head offset.</small></label>
+          <label><span>Requested camera resolution</span><select id="cameraResolution"><option value="320x240">320 × 240</option><option value="640x480" selected>640 × 480</option><option value="800x600">800 × 600</option><option value="1280x720">HD 1280 × 720</option></select><small>Applied the next time the camera is connected.</small></label>
+          <label><span>Pupil distance</span><div><input id="pupilDistance" type="range" min="45" max="80" step="1" value="73"><output id="pupilDistanceValue">73 MM</output></div><small>Physical assumption for the inferred ray only; it does not change MediaPipe landmarks.</small></label>
+          <label><span>Calibration type</span><select id="calibrationType"><option value="5">5 points</option><option value="9" selected>9 points</option></select><small>Five points matches the recovered accuracy map; nine improves viewport coverage.</small></label>
+          <label class="check-setting"><input id="showGazeSetting" type="checkbox" checked><span>Show gaze</span><small>Mirrors the live gaze-bubble control.</small></label>
+          <label class="check-setting"><input id="gazeFilterToggle" type="checkbox" checked><span>Adaptive gaze filter</span><small>One Euro filter reduces stationary jitter while preserving fast eye movements. Raw and filtered coordinates remain available in recordings.</small></label>
+          <label class="check-setting"><input id="showHeadPlot" type="checkbox"><span>Show head plot</span><small>Displays inferred yaw and pitch against the registered head pose.</small></label>
+          <label class="check-setting"><input id="showEngineOverlay" type="checkbox" checked><span>Show engine overlay</span><small>Dashed cyan arrows show the 2D fallback. After Register Head Pose, solid cyan arrows use the MonitorTracking.py pseudo-3D eye-sphere direction; they are diagnostic, not metric 3D gaze.</small></label>
+          <label class="check-setting"><input id="smartPersonCrop" type="checkbox" checked><span>Smart person crop</span><small>Centers and enlarges the detected person while keeping the face and upper body visible.</small></label>
+        </div>
+        <div class="settings-actions split-actions">
+          <button class="secondary" id="restartCamera" disabled>APPLY & RESTART CAMERA</button>
+          <button class="primary" id="showAccuracy" disabled>SHOW CALIBRATION ACCURACY <span>↗</span></button>
+          <button class="secondary" id="centerCorrection" disabled>CENTER DRIFT CORRECTION</button>
+          <button class="secondary" id="stabilityTest" disabled>START 2-MIN STABILITY TEST</button>
+        </div>
+        <canvas id="stabilityCanvas" width="960" height="220" hidden aria-label="Raw versus filtered gaze stability"></canvas>
+        <p id="stabilitySummary" class="settings-note">Stability test: look at the screen center for up to two minutes. Raw and filtered displacement are compared without changing calibration.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="calibration-overlay" id="calibrationOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="calibrationTitle" aria-describedby="calibrationHint">
+    <div class="calibration-copy"><b id="calibrationTitle">Calibration 1 / 9</b><span id="calibrationHint">Look at the target and keep still</span></div>
+    <button class="target" id="calibrationTarget" aria-label="Calibration target"><i></i></button>
+    <div class="calibration-cue" id="calibrationCue" data-direction="neutral" hidden aria-hidden="true">
+      <span class="cue-head"><i></i></span>
+      <span class="cue-arrow" id="calibrationArrow">◎</span>
+    </div>
+    <button class="cancel" id="cancelCalibration">CANCEL</button>
+  </div>
+  <div class="gaze-cursor" id="gazeCursor" hidden><i></i></div>
+  <canvas class="heatmap-canvas" id="heatmapCanvas" hidden aria-hidden="true"></canvas>
+  <canvas class="path-canvas" id="pathCanvas" aria-hidden="true"></canvas>
+  <aside class="debug-overlay" id="debugOverlay" hidden><b>DIAGNOSTICS</b><pre id="debugText">Waiting for samples…</pre></aside>
+  <canvas class="head-plot" id="headPlot" width="220" height="220" hidden aria-label="Live inferred head pose plot"></canvas>
+  <div class="comparison-legend" id="comparisonLegend" hidden><span><i></i>CURRENT</span><span><i></i>IMPORTED</span></div>
+
+  <div class="accuracy-modal" id="accuracyModal" hidden role="dialog" aria-modal="true" aria-labelledby="accuracyTitle">
+    <div class="accuracy-card">
+      <div class="panel-head"><span id="accuracyTitle">CALIBRATION ACCURACY</span><button id="closeAccuracy" aria-label="Close accuracy report">×</button></div>
+      <canvas id="accuracyCanvas" width="960" height="600"></canvas>
+      <div class="accuracy-summary" id="accuracySummary">No validated calibration yet.</div>
+      <div class="accuracy-actions"><button class="secondary" id="downloadAccuracy">DOWNLOAD MAP (.JPG)</button><button class="primary" id="closeAccuracyBottom">DONE</button></div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js?v=20261025-landmark-stability-1"></script>
+</body>
+</html>
